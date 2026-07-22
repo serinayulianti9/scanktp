@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Lens KTP Parser - Smart OCR Dashboard</title>
+    <meta name="description" content="Aplikasi pemindai dan pengekstrak data KTP otomatis berbasis OCR dengan Google Lens style overlay, drag-and-drop, kamera webcam, dan ekspor data ke JSON.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tesseract.js -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #080c14;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.16);
+            --primary: #4285f4;
+            --primary-glow: rgba(66, 133, 244, 0.2);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --glass-blur: blur(16px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            transition: all 0.2s ease-in-out;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 10% 10%, rgba(66, 133, 244, 0.1) 0px, transparent 50%),
+                radial-gradient(at 90% 90%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        /* Container Layout */
+        .dashboard-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Header Styling */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-container {
+            background: linear-gradient(135deg, var(--primary), #34a853);
+            padding: 10px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+        }
+
+        .brand-title h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(120deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand-title p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+
+        .status-indicator.processing {
+            background-color: var(--warning);
+            box-shadow: 0 0 10px var(--warning);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        /* Two-Column Grid Workspace */
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 968px) {
+            .workspace-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards and Panels */
+        .panel {
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Drag & Drop Area */
+        .drop-zone {
+            border: 2px dashed rgba(66, 133, 244, 0.4);
+            background: rgba(66, 133, 244, 0.02);
+            border-radius: 16px;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--primary);
+            background: rgba(66, 133, 244, 0.05);
+            box-shadow: inset 0 0 20px rgba(66, 133, 244, 0.1);
+        }
+
+        .drop-zone-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .upload-icon-wrapper {
+            width: 64px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+
+        .drop-zone-text h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .drop-zone-text p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Image Display & Bounding Boxes */
+        .image-viewport {
+            position: relative;
+            width: 100%;
+            max-height: 500px;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            background: #04060b;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .image-wrapper {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            max-height: 500px;
+        }
+
+        #preview-img {
+            max-width: 100%;
+            max-height: 500px;
+            display: block;
+            object-fit: contain;
+        }
+
+        /* Google Lens Styled Overlay */
+        .lens-overlay-box {
+            position: absolute;
+            border: 1.5px solid rgba(66, 133, 244, 0.5);
+            background: rgba(66, 133, 244, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            z-index: 10;
+            box-sizing: border-box;
+            transition: all 0.15s ease-out;
+        }
+
+        .lens-overlay-box:hover {
+            border-color: #fff;
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+            transform: scale(1.02);
+            z-index: 20;
+        }
+
+        .lens-overlay-box::after {
+            content: attr(data-text);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-6px);
+            background: rgba(11, 15, 25, 0.95);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .lens-overlay-box:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Toolbar / Actions below dropzone */
+        .workspace-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 10px 18px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--border-hover);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            box-shadow: 0 4px 14px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: #357ae8;
+            box-shadow: 0 4px 20px rgba(66, 133, 244, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: #fff;
+            border-color: var(--danger);
+        }
+
+        #image-input {
+            display: none;
+        }
+
+        /* Progress Bar UI */
+        .progress-container {
+            display: none;
+            margin-top: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px 18px;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .progress-status {
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        .progress-percentage {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .progress-track {
+            height: 6px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), #34a853);
+            border-radius: 3px;
+            transition: width 0.1s linear;
+        }
+
+        /* Right Panel Tabs & Control styling */
+        .tabs-header {
+            display: flex;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .tab-content {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        /* Action Menu for results */
+        .results-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        /* Parsed Table Styling */
+        .table-wrapper {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 14px 16px;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 14px 16px;
+            font-size: 14px;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .field-label {
+            font-weight: 600;
+            color: #5d9aff;
+            width: 32%;
+        }
+
+        .field-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13.5px;
+            word-break: break-all;
+            outline: none;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+        }
+
+        .field-value[contenteditable="true"] {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(66, 133, 244, 0.4);
+            box-shadow: 0 0 8px rgba(66, 133, 244, 0.15);
+        }
+
+        .field-actions {
+            text-align: right;
+            width: 15%;
+        }
+
+        .btn-mini {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .btn-mini:hover {
+            background: var(--primary-glow);
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        /* Validation / Typo indicator */
+        .validation-warning {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: var(--warning);
+            font-size: 11px;
+            margin-top: 4px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        /* Empty state styling */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+            text-align: center;
+            gap: 16px;
+        }
+
+        .empty-state-icon {
+            opacity: 0.3;
+        }
+
+        /* Raw Text view */
+        .raw-textarea {
+            width: 100%;
+            height: 380px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            color: #d1d5db;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+        }
+
+        .raw-textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        /* Modal Camera UI */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .camera-card {
+            background: #0f1422;
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            width: 90%;
+            max-width: 640px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            transform: translateY(20px);
+            transition: transform 0.25s ease;
+        }
+
+        .modal-overlay.active .camera-card {
+            transform: translateY(0);
+        }
+
+        .camera-viewport {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #camera-stream {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror camera preview for comfort */
+        }
+
+        /* KTP Guide Overlay over Camera */
+        .camera-overlay-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            height: 60%;
+            border: 2px dashed rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .camera-overlay-guide::after {
+            content: "Posisikan KTP di dalam bingkai";
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .camera-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #111827;
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .toast.active {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-icon {
+            color: var(--success);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-container">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+                        <path d="M3 7V5a2 2 0 0 1 2-2h2m10 0h2a2 2 0 0 1 2 2v2m0 10v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </div>
+                <div class="brand-title">
+                    <h1>KTP OCR Lens Dashboard</h1>
+                    <p>Ekstraksi Data Dokumen Cerdas & Editor Koreksi</p>
+                </div>
+            </div>
+            <div class="status-badge">
+                <span class="status-indicator" id="status-glow"></span>
+                <span id="status-text">Sistem Siap</span>
+            </div>
+        </header>
+
+        <!-- Workspace (Grid) -->
+        <div class="workspace-grid">
+            
+            <!-- Left Panel (Workspace/Image View) -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        Workspace Dokumen
+                    </h2>
+                    <div id="lens-toggle-wrapper" style="display: none;">
+                        <label class="btn-mini" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="toggle-overlay" checked style="accent-color: var(--primary);">
+                            Tampilkan Teks Lens
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Dropzone Area -->
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-zone-content">
+                        <div class="upload-icon-wrapper">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="drop-zone-text">
+                            <h3>Pilih, Seret & Lepas Gambar KTP</h3>
+                            <p>Mendukung PNG, JPG, JPEG atau salin langsung (Ctrl+V)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image Viewport -->
+                <div class="image-viewport" id="image-viewport">
+                    <div class="image-wrapper" id="image-wrapper">
+                        <img id="preview-img" src="" alt="KTP Preview">
+                    </div>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="progress-container" id="progress-container">
+                    <div class="progress-info">
+                        <span class="progress-status" id="progress-status">Memproses dokumen...</span>
+                        <span class="progress-percentage" id="progress-percentage">0%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                </div>
+
+                <!-- Upload Controls Buttons -->
+                <div class="workspace-actions">
+                    <button class="btn btn-primary" onclick="triggerFileInput()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Unggah Foto
+                    </button>
+                    <button class="btn" onclick="openCamera()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                        Ambil Kamera
+                    </button>
+                    <button class="btn btn-danger" id="btn-reset" style="display: none;" onclick="resetWorkspace()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                        Reset
+                    </button>
+                    <input type="file" id="image-input" accept="image/*">
+                </div>
+            </div>
+
+            <!-- Right Panel (Extracted Results) -->
+            <div class="panel">
+                
+                <!-- Tabs -->
+                <div class="tabs-header">
+                    <button class="tab-btn active" id="tab-parsed" onclick="switchTab('parsed')">Data Terurai</button>
+                    <button class="tab-btn" id="tab-raw" onclick="switchTab('raw')">Teks Mentah</button>
+                </div>
+
+                <!-- Export Bar -->
+                <div class="results-actions" id="results-actions" style="display: none;">
+                    <button class="btn-mini" onclick="copyAllJSON()" style="padding: 7px 12px;">Salin JSON</button>
+                    <button class="btn-mini" onclick="downloadJSON()" style="padding: 7px 12px;">Unduh JSON</button>
+                </div>
+
+                <!-- Tab Parsed content -->
+                <div class="tab-content active" id="content-parsed">
+                    <div class="table-wrapper" id="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Field Label</th>
+                                    <th>Nilai Extracted</th>
+                                    <th style="text-align: right;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <tr>
+                                    <td colspan="3">
+                                        <div class="empty-state">
+                                            <svg class="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                                <polyline points="14 2 14 8 20 8"/>
+                                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                                <line x1="16" y1="17" x2="8" y2="17"/>
+                                                <polyline points="10 9 9 9 8 9"/>
+                                            </svg>
+                                            <div>
+                                                <p style="font-weight: 500; font-size: 14px;">Belum Ada Data Dokumen</p>
+                                                <p style="font-size: 12px; margin-top: 4px;">Silakan unggah atau foto KTP untuk memulai pemrosesan OCR.</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab Raw content -->
+                <div class="tab-content" id="content-raw">
+                    <textarea class="raw-textarea" id="raw-text-view" readonly placeholder="Teks mentah hasil pembacaan OCR akan tampil di sini..."></textarea>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Camera Webcam Modal -->
+    <div class="modal-overlay" id="camera-modal">
+        <div class="camera-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 16px; font-weight: 600;">Ambil Gambar KTP</h3>
+                <button class="btn-mini" onclick="closeCamera()" style="border-radius: 50%; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;">✕</button>
+            </div>
+            
+            <div class="camera-viewport">
+                <video id="camera-stream" autoplay playsinline></video>
+                <div class="camera-overlay-guide"></div>
+            </div>
+
+            <div class="camera-controls">
+                <select id="camera-select" class="btn" style="padding: 8px 12px; font-size: 12px; max-width: 200px;">
+                    <option value="">Memuat Kamera...</option>
+                </select>
+                <button class="btn btn-primary" onclick="capturePhoto()" style="padding: 10px 24px; border-radius: 30px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    Ambil Foto
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Element -->
+    <div class="toast" id="toast-message">
+        <span class="toast-icon">✓</span>
+        <span id="toast-text">Tersalin ke papan klip!</span>
+    </div>
+
+<script>
+    // Elements & Global States
+    const dropZone = document.getElementById('drop-zone');
+    const imageInput = document.getElementById('image-input');
+    const previewImg = document.getElementById('preview-img');
+    const imageViewport = document.getElementById('image-viewport');
+    const imageWrapper = document.getElementById('image-wrapper');
+    const progressContainer = document.getElementById('progress-container');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPercentage = document.getElementById('progress-percentage');
+    const progressStatus = document.getElementById('progress-status');
+    const statusText = document.getElementById('status-text');
+    const statusGlow = document.getElementById('status-glow');
+    const tableBody = document.getElementById('table-body');
+    const resultsActions = document.getElementById('results-actions');
+    const btnReset = document.getElementById('btn-reset');
+    const lensToggleWrapper = document.getElementById('lens-toggle-wrapper');
+    const toggleOverlay = document.getElementById('toggle-overlay');
+    const rawTextView = document.getElementById('raw-text-view');
+    const cameraModal = document.getElementById('camera-modal');
+    const cameraStream = document.getElementById('camera-stream');
+    const cameraSelect = document.getElementById('camera-select');
+    const toastMessage = document.getElementById('toast-message');
+    const toastText = document.getElementById('toast-text');
+
+    let parsedKTPData = {};
+    let rawOCRLines = [];
+    let localStream = null;
+    let boundingBoxes = [];
+
+    // Init Page setup
+    document.addEventListener('DOMContentLoaded', () => {
+        // Drag over drop zone handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processImageFile(files[0]);
+            }
+        });
+
+        // Trigger file picker
+        dropZone.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processImageFile(e.target.files[0]);
+            }
+        });
+
+        // Paste from clipboard handler
+        window.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    processImageFile(blob);
+                    showToast('Gambar ditempel dari papan klip!');
+                    break;
+                }
+            }
+        });
+
+        // Resize Listener for overlay boxes alignment
+        window.addEventListener('resize', () => {
+            if (previewImg.src) {
+                repositionOverlayBoxes();
+            }
+        });
+
+        // Toggle lens overlay visualization
+        toggleOverlay.addEventListener('change', () => {
+            const boxes = document.querySelectorAll('.lens-overlay-box');
+            boxes.forEach(box => {
+                box.style.display = toggleOverlay.checked ? 'block' : 'none';
+            });
+        });
+    });
+
+    // Handle uploaded/captured Image
+    function processImageFile(file) {
+        if (!file.type.startsWith('image/')) {
+            showToast('Jenis file tidak valid! Gunakan format gambar.', 'danger');
+            return;
+        }
+
+        const url = URL.createObjectURL(file);
+        previewImg.src = url;
+        
+        // Show viewport, hide dropzone
+        dropZone.style.display = 'none';
+        imageViewport.style.display = 'flex';
+        btnReset.style.display = 'inline-flex';
+        
+        // Clear previous overlays
+        clearOverlayBoxes();
+        
+        previewImg.onload = () => {
+            runOCR(previewImg.src);
+        };
+    }
+
+    // Trigger File Input click
+    function triggerFileInput() {
+        imageInput.click();
+    }
+
+    // Toast alerts helper
+    function showToast(message, type = 'success') {
+        toastText.innerText = message;
+        const icon = toastMessage.querySelector('.toast-icon');
+        if (type === 'success') {
+            icon.innerText = '✓';
+            icon.style.color = 'var(--success)';
+        } else if (type === 'danger') {
+            icon.innerText = '✕';
+            icon.style.color = 'var(--danger)';
+        } else if (type === 'warning') {
+            icon.innerText = '⚠';
+            icon.style.color = 'var(--warning)';
+        }
+        
+        toastMessage.classList.add('active');
+        setTimeout(() => {
+            toastMessage.classList.remove('active');
+        }, 3000);
+    }
+
+    // Switch Tabs
+    window.switchTab = function(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        if (tabName === 'parsed') {
+            document.getElementById('tab-parsed').classList.add('active');
+            document.getElementById('content-parsed').classList.add('active');
+        } else {
+            document.getElementById('tab-raw').classList.add('active');
+            document.getElementById('content-raw').classList.add('active');
+        }
+    };
+
+    // Reset workspace to initial state
+    window.resetWorkspace = function() {
+        dropZone.style.display = 'flex';
+        imageViewport.style.display = 'none';
+        previewImg.src = '';
+        imageInput.value = '';
+        btnReset.style.display = 'none';
+        lensToggleWrapper.style.display = 'none';
+        progressContainer.style.display = 'none';
+        resultsActions.style.display = 'none';
+
+        // Reset Status
+        statusText.innerText = "Sistem Siap";
+        statusGlow.className = "status-indicator";
+
+        clearOverlayBoxes();
+
+        // Reset Results Table
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="3">
+                    <div class="empty-state">
+                        <svg class="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                        <div>
+                            <p style="font-weight: 500; font-size: 14px;">Belum Ada Data Dokumen</p>
+                            <p style="font-size: 12px; margin-top: 4px;">Silakan unggah atau foto KTP untuk memulai pemrosesan OCR.</p>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+        rawTextView.value = '';
+        parsedKTPData = {};
+        rawOCRLines = [];
+        boundingBoxes = [];
+    };
+
+    // Text cleaner helper
+    function cleanOCRText(text) {
+        return text.trim()
+            .replace(/[~=\-_|—–[\]{}"'\\;`!]/g, '')
+            .replace(/\s+/g, ' ');
+    }
+
+    // Robust KTP Data Parsing Engine
+    function parseKTPData(lines) {
+        const ktpData = {
+            "NIK": "",
+            "Nama": "",
+            "Tempat/Tgl Lahir": "",
+            "Jenis Kelamin": "",
+            "Gol. Darah": "",
+            "Alamat": "",
+            "RT/RW": "",
+            "Kel/Desa": "",
+            "Kecamatan": "",
+            "Agama": "",
+            "Status Perkawinan": "",
+            "Pekerjaan": "",
+            "Kewarganegaraan": "",
+            "Berlaku Hingga": ""
+        };
+
+        const joinedText = lines.join('\n');
+
+        // Extract NIK (Look for 16-digit like strings, filter common OCR typos)
+        const nikRegex = /(?:NIK|N|IK)?\s*[:;\-\s]*([0-9BIDOLsSgG]{16})/i;
+        const nikMatch = joinedText.match(nikRegex);
+        if (nikMatch) {
+            let processedNik = nikMatch[1]
+                .replace(/B/g, '8')
+                .replace(/[D|O|o|Q]/g, '0')
+                .replace(/[I|L|l|s|S|i]/g, '1')
+                .replace(/[g|G]/g, '9')
+                .replace(/[z|Z]/g, '2');
+            ktpData["NIK"] = processedNik;
+        }
+
+        // Search lines iteratively for labels
+        lines.forEach((line) => {
+            let clean = cleanOCRText(line);
+
+            // Nama parsing
+            if (/Nama/i.test(clean) && !ktpData["Nama"]) {
+                let val = clean.replace(/^.*Nama[:;\s]*/i, '').trim();
+                val = val.replace(/[^A-Za-z\s\.,']/gi, '').toUpperCase();
+                if (val.length > 2) ktpData["Nama"] = val.trim();
+            }
+
+            // Tempat/Tanggal Lahir
+            else if (/Tempat|Tgl|Lahir|TL/i.test(clean) && !ktpData["Tempat/Tgl Lahir"]) {
+                let val = clean.replace(/^.*(?:Tempat|Tgl|Lahir|TglLahir|TempatLahir|TL)[:;\s]*/gi, '').trim();
+                val = val.replace(/^[a-z]+gi\s*/i, ''); // Fix common typos like "TempaIATgi"
+                val = val.replace(/(\d{2})[,\.\s\-]*(\d{2})[,\.\s\-]*(\d{4})/, '$1-$2-$3');
+                if (val.length > 3) ktpData["Tempat/Tgl Lahir"] = val.toUpperCase();
+            }
+
+            // Jenis Kelamin & Golongan Darah (Usually on same line)
+            else if (/Jenis\s*Kelamin|Kelamin|LAKI|PEREMPUAN/i.test(clean) && !ktpData["Jenis Kelamin"]) {
+                if (/PEREMPUAN/i.test(clean)) ktpData["Jenis Kelamin"] = "PEREMPUAN";
+                else if (/LAKI/i.test(clean)) ktpData["Jenis Kelamin"] = "LAKI-LAKI";
+
+                // Check for Gol. Darah on the same line
+                const bloodMatch = clean.match(/(?:Gol\.?\s*Darah|Darah|Gol)?\s*[:;\-\s]*\b(A|B|O|AB)\b/i);
+                if (bloodMatch) {
+                    ktpData["Gol. Darah"] = bloodMatch[1].toUpperCase();
+                }
+            }
+
+            // Standalone Gol Darah checking
+            else if (/Gol\.?\s*Darah|Darah/i.test(clean) && !ktpData["Gol. Darah"]) {
+                const bloodMatch = clean.match(/\b(A|B|O|AB)\b/i);
+                if (bloodMatch) {
+                    ktpData["Gol. Darah"] = bloodMatch[1].toUpperCase();
+                }
+            }
+
+            // Alamat
+            else if (/Alamat/i.test(clean) && !ktpData["Alamat"]) {
+                let val = clean.replace(/^.*Alamat[:;\s]*/i, '').trim().toUpperCase();
+                if (val.length > 2) ktpData["Alamat"] = val;
+            }
+
+            // RT/RW
+            else if (/RT\s*\/?\s*RW/i.test(clean) && !ktpData["RT/RW"]) {
+                let val = clean.replace(/^.*(?:RT|RW)[:;\s]*/gi, '').trim();
+                const rtRwMatch = val.match(/\d{3}\s*\/\s*\d{3}/);
+                ktpData["RT/RW"] = rtRwMatch ? rtRwMatch[0] : val.toUpperCase();
+            }
+
+            // Kelurahan/Desa
+            else if (/Kel|Desa|Kelurahan/i.test(clean) && !ktpData["Kel/Desa"]) {
+                let val = clean.replace(/^.*(?:Kel|Desa|Kelurahan)[:;\s]*/gi, '').trim().toUpperCase();
+                if (val.length > 2) ktpData["Kel/Desa"] = val;
+            }
+
+            // Kecamatan
+            else if (/Kecamatan/i.test(clean) && !ktpData["Kecamatan"]) {
+                let val = clean.replace(/^.*Kecamatan[:;\s]*/i, '').trim().toUpperCase();
+                if (val.length > 2) ktpData["Kecamatan"] = val;
+            }
+
+            // Agama
+            else if (/Agama/i.test(clean) && !ktpData["Agama"]) {
+                let val = clean.replace(/^.*Agama[:;\s]*/i, '').trim().toUpperCase();
+                // Common fixes
+                val = val.replace(/ISLAN/g, 'ISLAM');
+                if (val.length > 2) ktpData["Agama"] = val;
+            }
+
+            // Status Perkawinan
+            else if (/Status|Perkawinan|KAWIN|BELUM|CERAI/i.test(clean) && !ktpData["Status Perkawinan"]) {
+                if (/BELUM/i.test(clean)) ktpData["Status Perkawinan"] = "BELUM KAWIN";
+                else if (/KAWIN/i.test(clean)) ktpData["Status Perkawinan"] = "KAWIN";
+                else if (/CERAI/i.test(clean)) {
+                    if (/HIDUP/i.test(clean)) ktpData["Status Perkawinan"] = "CERAI HIDUP";
+                    else if (/MATI/i.test(clean)) ktpData["Status Perkawinan"] = "CERAI MATI";
+                    else ktpData["Status Perkawinan"] = "CERAI";
+                }
+            }
+
+            // Pekerjaan
+            else if (/Pekerjaan/i.test(clean) && !ktpData["Pekerjaan"]) {
+                let val = clean.replace(/^.*Pekerjaan[:;\s]*/i, '').trim().toUpperCase();
+                if (val.length > 2) ktpData["Pekerjaan"] = val;
+            }
+
+            // Kewarganegaraan
+            else if (/Kewarganegaraan|Kewarganega|WNI|WNA/i.test(clean) && !ktpData["Kewarganegaraan"]) {
+                if (/WNA/i.test(clean)) ktpData["Kewarganegaraan"] = "WNA";
+                else ktpData["Kewarganegaraan"] = "WNI";
+            }
+
+            // Berlaku Hingga
+            else if (/Berlaku|Hingga/i.test(clean) && !ktpData["Berlaku Hingga"]) {
+                let val = clean.replace(/^.*(?:Berlaku|Hingga)[:;\s]*/gi, '').trim().toUpperCase();
+                if (val.length > 2) ktpData["Berlaku Hingga"] = val;
+            }
+        });
+
+        // Final secondary sweeps if details are still empty
+        if (!ktpData["NIK"]) {
+            // Sweep for any standalone 16 digit number
+            const altMatch = joinedText.match(/\b\d{16}\b/);
+            if (altMatch) ktpData["NIK"] = altMatch[0];
+        }
+
+        return ktpData;
+    }
+
+    // Run Tesseract OCR Process
+    function runOCR(imageSrc) {
+        statusText.innerText = "Memulai Tesseract API...";
+        statusGlow.className = "status-indicator processing";
+        progressContainer.style.display = 'block';
+        updateProgress(5, "Inisialisasi engine...");
+
+        Tesseract.recognize(
+            imageSrc,
+            'ind+eng',
+            {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        const progress = Math.round(m.progress * 100);
+                        updateProgress(progress, `Mengekstrak Teks: ${progress}%`);
+                    } else if (m.status === 'loading tesseract core') {
+                        updateProgress(15, 'Memuat Core OCR...');
+                    } else if (m.status === 'initializing api') {
+                        updateProgress(30, 'Menghubungkan Database Bahasa...');
+                    }
+                }
+            }
+        ).then(({ data }) => {
+            updateProgress(100, "Pemrosesan OCR Selesai!");
+            statusText.innerText = "Pemrosesan Selesai";
+            statusGlow.className = "status-indicator";
+            lensToggleWrapper.style.display = 'block';
+            resultsActions.style.display = 'flex';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 800);
+
+            rawOCRLines = data.lines.map(line => line.text);
+            rawTextView.value = data.text;
+
+            // Generate Bounding Boxes Data
+            boundingBoxes = data.lines.map(line => {
+                return {
+                    text: cleanOCRText(line.text),
+                    bbox: line.bbox
+                };
+            }).filter(item => item.text.length > 1);
+
+            repositionOverlayBoxes();
+
+            // Parse structured KTP Data
+            parsedKTPData = parseKTPData(rawOCRLines);
+            renderParsedData();
+            showToast('OCR Berhasil diekstrak!');
+
+        }).catch(err => {
+            console.error(err);
+            statusText.innerText = "Gagal memproses";
+            statusGlow.className = "status-indicator";
+            progressContainer.style.display = 'none';
+            showToast('Gagal memproses gambar OCR.', 'danger');
+            
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="3" style="text-align: center; color: var(--danger); padding: 40px;">
+                        Gagal memuat atau memindai gambar. Silakan coba kembali.
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    // Progress Bar Updater
+    function updateProgress(value, text) {
+        progressFill.style.width = value + '%';
+        progressPercentage.innerText = value + '%';
+        progressStatus.innerText = text;
+    }
+
+    // Google Lens Bounding Box Overlays
+    function clearOverlayBoxes() {
+        const boxes = document.querySelectorAll('.lens-overlay-box');
+        boxes.forEach(box => box.remove());
+    }
+
+    function repositionOverlayBoxes() {
+        clearOverlayBoxes();
+        if (!previewImg.clientWidth || boundingBoxes.length === 0) return;
+
+        const scaleX = previewImg.clientWidth / previewImg.naturalWidth;
+        const scaleY = previewImg.clientHeight / previewImg.naturalHeight;
+
+        boundingBoxes.forEach(item => {
+            const box = item.bbox;
+            const overlay = document.createElement('div');
+            overlay.className = 'lens-overlay-box';
+            
+            // Adjust positioning offset based on layout constraints
+            overlay.style.left = (box.x0 * scaleX) + 'px';
+            overlay.style.top = (box.y0 * scaleY) + 'px';
+            overlay.style.width = ((box.x1 - box.x0) * scaleX) + 'px';
+            overlay.style.height = ((box.y1 - box.y0) * scaleY) + 'px';
+            
+            overlay.setAttribute('data-text', item.text);
+            
+            // On Click - Copy specific box content
+            overlay.addEventListener('click', (e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(item.text);
+                showToast(`Salin: "${item.text}"`);
+            });
+
+            // Set dynamic display state
+            overlay.style.display = toggleOverlay.checked ? 'block' : 'none';
+
+            imageWrapper.appendChild(overlay);
+        });
+    }
+
+    // Render Parsed Data to Table
+    function renderParsedData() {
+        let htmlRows = '';
+
+        for (const [key, value] of Object.entries(parsedKTPData)) {
+            const displayValue = value || '';
+            let warningHtml = '';
+
+            // Add basic formatting validation visual guides
+            if (key === 'NIK' && displayValue) {
+                if (displayValue.length !== 16 || !/^\d+$/.test(displayValue)) {
+                    warningHtml = `
+                        <div class="validation-warning">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            NIK harus 16 digit angka
+                        </div>
+                    `;
+                }
+            }
+
+            htmlRows += `
+                <tr>
+                    <td class="field-label">${key}</td>
+                    <td>
+                        <div 
+                            class="field-value" 
+                            contenteditable="true" 
+                            id="field-${key.replace(/[\.\/\s]/g, '-')}"
+                            onblur="updateLocalField('${key}', this)"
+                        >${displayValue}</div>
+                        ${warningHtml}
+                    </td>
+                    <td class="field-actions">
+                        <button class="btn-mini" onclick="copyField('${key}')">Salin</button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        tableBody.innerHTML = htmlRows;
+    }
+
+    // Update data locally when edited inline in the table
+    window.updateLocalField = function(key, element) {
+        const newValue = element.innerText.trim();
+        parsedKTPData[key] = newValue;
+        
+        // Re-render to re-trigger validation warning signs if corrected
+        renderParsedData();
+    };
+
+    // Copy Individual Field
+    window.copyField = function(key) {
+        const value = parsedKTPData[key];
+        if (!value) {
+            showToast(`Kolom ${key} kosong.`, 'warning');
+            return;
+        }
+        navigator.clipboard.writeText(value).then(() => {
+            showToast(`${key} disalin!`);
+        });
+    };
+
+    // Copy entire JSON
+    window.copyAllJSON = function() {
+        const jsonStr = JSON.stringify(parsedKTPData, null, 4);
+        navigator.clipboard.writeText(jsonStr).then(() => {
+            showToast('JSON lengkap disalin ke clipboard!');
+        });
+    };
+
+    // Download JSON File
+    window.downloadJSON = function() {
+        const jsonStr = JSON.stringify(parsedKTPData, null, 4);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        const filename = `KTP_Parsed_${parsedKTPData["NIK"] || 'Data'}.json`;
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('File JSON berhasil diunduh!');
+    };
+
+    // ==========================================
+    // WEBCAM/CAMERA UTILITIES
+    // ==========================================
+
+    window.openCamera = function() {
+        cameraModal.classList.add('active');
+        cameraSelect.innerHTML = '<option value="">Mengakses kamera...</option>';
+        
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(() => navigator.mediaDevices.enumerateDevices())
+            .then(devices => {
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                cameraSelect.innerHTML = '';
+                
+                if (videoDevices.length === 0) {
+                    cameraSelect.innerHTML = '<option value="">Tidak ada kamera terdeteksi</option>';
+                    return;
+                }
+
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Kamera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+
+                // Start stream with first device
+                startCameraStream(videoDevices[0].deviceId);
+                
+                // Switch Camera Event
+                cameraSelect.onchange = () => {
+                    startCameraStream(cameraSelect.value);
+                };
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('Akses kamera ditolak atau tidak tersedia.', 'danger');
+                closeCamera();
+            });
+    };
+
+    function startCameraStream(deviceId) {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+            video: {
+                deviceId: deviceId ? { exact: deviceId } : undefined,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'environment' // Preferred for documents scan
+            }
+        };
+
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then(stream => {
+                localStream = stream;
+                cameraStream.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Gagal memulai stream kamera: ", err);
+                showToast('Gagal menyambungkan stream kamera.', 'danger');
+            });
+    }
+
+    window.closeCamera = function() {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        cameraStream.srcObject = null;
+        cameraModal.classList.remove('active');
+    };
+
+    window.capturePhoto = function() {
+        if (!localStream) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cameraStream.videoWidth;
+        canvas.height = cameraStream.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Mirror correction if stream was mirrored (optional, usually front is mirrored)
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        
+        ctx.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(blob => {
+            const capturedFile = new File([blob], "captured-ktp.jpg", { type: "image/jpeg" });
+            processImageFile(capturedFile);
+            closeCamera();
+            showToast('Foto berhasil ditangkap!');
+        }, 'image/jpeg', 0.95);
+    };
+
+</script>
+
+</body>
+</html>
